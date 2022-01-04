@@ -1,4 +1,4 @@
-import { BanchoClient, BanchoLobby, BanchoMod, BanchoMods, BanchoMultiplayerChannel } from "bancho.js";
+import { BanchoClient, BanchoLobby, BanchoMod, BanchoMods, BanchoMultiplayerChannel,  BanchoLobbyTeamModes, BanchoLobbyWinConditions } from "bancho.js";
 import { Client, Mode } from "nodesu";
 import { config } from "./config.json";
 import { match } from "./match.json";
@@ -7,12 +7,12 @@ const bancho = new BanchoClient(config);
 let channel: BanchoMultiplayerChannel;
 let lobby: BanchoLobby;
 let mappool: Mappool;
-let scoreRed: number;
-let scoreBlue: number;
-let bestOf: number;
 let pickindex = 0;
+let pointsRed = 0;
+let pointsBlue = 0;
 let counts: number[] = [];
 let pickorder: number[] = [];
+
 interface Mappool {
   name: string;
   modgroups: Modgroup[];
@@ -58,6 +58,7 @@ async function init() {
         console.log("failed to create lobby");
     }
     lobby = channel.lobby;
+    lobby.setSettings(BanchoLobbyTeamModes.TeamVs, BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
     await getPool('906bcbf4-6675-3d23-b888-eff53539a19b');
     await setRandomBeatmap();
     await lobby.setPassword("test");
@@ -68,8 +69,54 @@ async function init() {
 
 function eventHandle() {
     lobby.on("allPlayersReady", async () => {
-        await setRandomBeatmap();
+        await lobby.startMatch();
+    }),
+
+    lobby.on("matchFinished", async () => {
+        let scoreRed = 0;
+        let scoreBlue = 0;
+        const scores = lobby.scores;
+        for (let i = 0; i < scores.length; i++) {
+            if (scores[i].player.team === 'Red') {
+                scoreRed += scores[i].score;
+            } else {
+                scoreBlue += scores[i].score;
+            }
+        }
+        const diff = Math.abs(scoreRed - scoreBlue);
+        if (scoreRed > scoreBlue) {
+            channel.sendMessage(`Red wins by ${diff}`)
+            pointsRed++;
+        } else if (scoreBlue > scoreRed) {
+            channel.sendMessage(`Blue wins by ${diff}`)
+            pointsBlue++;
+        } else {
+            channel.sendMessage("Tied scores: Neither team earns a point");
+        }
+        sendScore();
+        if ( pointsRed === Math.ceil(match.bestOf/2)) {
+            channel.sendMessage("Red wins the match");
+            endMatch();
+        } else if ( pointsBlue ===  Math.ceil(match.bestOf/2)) {
+            channel.sendMessage("Blue wins the match");
+            endMatch();
+        } else if ( pointsRed === pointsBlue && pointsBlue === Math.floor(match.bestOf/2)) {
+            channel.sendMessage("Scores are tied. A tiebreaker will be played")
+            await setTieBreaker();
+        } else {
+            await setRandomBeatmap();
+        }
+
     })
+}
+
+async function setTieBreaker() {
+    const modgroupindex = mappool.modgroups.length - 1;
+    const modgroup = mappool.modgroups[modgroupindex];
+    const mapindex = Math.floor(Math.random() * modgroup.maps.length);
+    const map = Number(modgroup.maps[mapindex]);
+    await lobby.setMap(map, Mode.osu);
+    await lobby.setMods([BanchoMods.None], true);
 }
 
 async function setRandomBeatmap() {
@@ -103,5 +150,14 @@ async function setRandomBeatmap() {
     await lobby.setMods(mods!, freemod);
     mappool.modgroups[modgroupindex].maps.splice(mapindex, 1);
     pickindex++;
+}
+function sendScore() {
+    channel.sendMessage(`[Red] ${pointsRed} : ${pointsBlue} [Blue]`);
+}
+async function endMatch() {
+    channel.sendMessage(`Final score: [Red] ${pointsRed} : ${pointsBlue} [Blue]`);
+    channel.sendMessage("Lobby will automatically close in 30 seconds");
+    await new Promise(r => setTimeout(r, 30000));
+    await lobby.closeLobby();
 }
 init();
