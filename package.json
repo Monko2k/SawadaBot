@@ -1,0 +1,18 @@
+{
+  "name": "sawadabot",
+  "version": "1.0.0",
+  "description": "osu match bot",
+  "main": "index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Monko2k",
+  "license": "ISC",
+  "dependencies": {
+    "bancho.js": "^0.9.7",
+    "nodesu": "^0.7.3"
+  },
+  "devDependencies": {
+    "typescript": "^4.5.4"
+  }
+}

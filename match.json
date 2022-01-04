@@ -1,0 +1,13 @@
+{
+    "match": {
+        "pool": "6a38952a-849c-3693-b960-80cf2637d1c9",
+        "bestOf": 13,
+        "teamSize": "",
+        "scoreType": "",
+        "red": [ "Monko2k"
+        ],
+        "blue": [
+
+        ]
+    }
+}
