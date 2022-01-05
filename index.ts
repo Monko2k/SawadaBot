@@ -2,6 +2,7 @@ import { BanchoClient, BanchoLobby, BanchoMod, BanchoMods, BanchoMultiplayerChan
 import { Client, Mode } from 'nodesu';
 import { Channel, Client as DiscordClient, Intents, Interaction, Message, MessageCollector, MessageEmbed, PresenceManager } from 'discord.js';
 import { config } from './config.json';
+import * as crypto from 'crypto';
 const api = new Client(config.apiKey);
 const bancho = new BanchoClient(config);
 const discordclient = new DiscordClient({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
@@ -18,7 +19,8 @@ interface Modgroup {
 }
 
 interface MatchInfo {
-    pool: string;
+    matchcode: string;
+    mappool: Mappool;
     bestOf: number;
     teamSize: number;
     red: string[];
@@ -28,7 +30,7 @@ interface MatchInfo {
 interface Game {
     channel?: BanchoMultiplayerChannel;
     lobby?: BanchoLobby;
-    mappool?: Mappool;
+    mappool: Mappool;
     pickindex: number;
     pointsRed: number;
     pointsBlue: number;
@@ -51,7 +53,7 @@ function initDiscord() {
     console.log('Initialized Discord Client');
     process.on('SIGINT', async () => {
         for (let i = 0; i < lobbies.length; i++) {
-            lobbies[i].closeLobby();
+            await lobbies[i].closeLobby();
         }
         await bancho.disconnect();
         process.exit();
@@ -72,49 +74,47 @@ async function handleMessage(m: Message) {
         m.reply('Enter team size (1-8)')
             .then(async () => {
                 teamSize = Number(await awaitResponse(m));
-                if (teamSize < 1 || teamSize > 8) {
-                    m.channel.send('Invalid teamsize');
-                    throw 'Input Error';
+                if (Number.isNaN(teamSize) || teamSize < 1 || teamSize > 8) {
+                    throw 'Invalid team size';
                 }
             })
             .then(async () => {
                 m.reply('Enter BestOf (1-13)')
                 bestOf = Number(await awaitResponse(m));
                 if (bestOf < 1 || bestOf > 13 || !Number.isInteger(bestOf) || bestOf%2 !== 1) {
-                    m.channel.send('Invalid BestOf');
-                    throw 'Input Error';
+                    throw 'Invalid bestOf';
                 }
             })
             .then(async () => {
                 m.reply('Enter Team 1 members (comma separated)')
                 red = (await awaitResponse(m)).split(',');
-                console.log(red.length)
                 if (red.length !== teamSize) {
-                    m.channel.send('Invalid number of members');
-                    throw 'Input Error';
+                    throw 'Invalid number of members';
                 }
-                red = red.map((e) => {
-                    return e.trim();
-                })
+                red = red.map((e) => e.trim())
             })
             .then(async () => {
                 m.reply('Enter Team 2 members (comma separated)')
                 blue = (await awaitResponse(m)).split(',');
                 if (blue.length !== teamSize) {
-                    m.channel.send('Invalid number of members');
-                    throw 'Input Error';
+                    throw 'Invalid number of members';
                 }
-                blue = blue.map((e) => {
-                    return e.trim();
-                })
+                blue = blue.map((e) => e.trim())
             })
             .then(async () => {
                 m.reply('Enter Mappool')
                 pool = await awaitResponse(m);
+                const mappool = await getPool(pool);
+                if (mappool) {
+                    return mappool
+                } else {
+                    throw 'Invalid mappool'
+                }
             })
-            .then(() => {
+            .then((res) => {
                 const match: MatchInfo = {
-                    pool: pool,
+                    matchcode: crypto.randomBytes(3).toString('hex'),
+                    mappool: res,
                     bestOf: bestOf,
                     teamSize: teamSize,
                     red: red,
@@ -122,20 +122,21 @@ async function handleMessage(m: Message) {
                 }
                 const embed = new MessageEmbed()
                     .setColor('#FFFFFF')
-                    .setTitle('Sawada Scrim Match')
+                    .setTitle(`Sawada Scrim Match #${match.matchcode}`)
                     .setDescription(`BO${bestOf} ${teamSize}v${teamSize}`)
                     .addFields(
                         { name: 'Mappool', value: pool.toString() },
-                        { name: '\u200B', value: '\u200B' },
-                        { name: 'Team 1', value: red.toString() },
-                        { name: 'Team 2', value: blue.toString() },
+                        { name: 'Team 1', value: red.join(', ') },
+                        { name: 'Team 2', value: blue.join(', ') },
                     )
                     .setTimestamp();
                 m.channel.send({ embeds: [embed]});
                 initGame(match);
             })
             .catch((err) => {
-                //catch user errors, but don't do anything with them for now 
+                if (err !== 'Input Error') {
+                    m.channel.send(err);
+                }
             })
         
 
@@ -147,12 +148,12 @@ async function awaitResponse(m: Message): Promise<string> {
     const filter = (response: Message) => {
         return (response.author.id === m.author.id)
     }
-    return new Promise<string>((resolve) => {
+    return new Promise<string>((resolve, reject) => {
         m.channel.awaitMessages({ filter, max: 1, time: 30000, errors: ['time'] })
             .then(collected => {
                 resolve(collected.first()!.content)
             }).catch(() => {
-                m.channel.send('Setup timed out');
+                reject('Setup timed out');
             })
     }) 
 }
@@ -182,18 +183,19 @@ function setOrder(mappool: Mappool, bestOf: number): Array<number> {
 }
 
 async function getPool(pool: string): Promise<Mappool> {
-    return new Promise<Mappool>(async (resolve) => {
+    return new Promise<Mappool>(async (resolve, reject) => {
         try {
             const data = await import('./pools/' + pool + '.json') as Mappool;
             resolve(data);
         } catch (err) {
-            console.log(err);
+            reject('Invalid Pool');
         }
     })
 }
 
 async function initGame(match: MatchInfo) {
     let game: Game = {
+        mappool: match.mappool,
         pickindex: 1,
         pointsRed: 0,
         pointsBlue: 0,
@@ -202,24 +204,22 @@ async function initGame(match: MatchInfo) {
         bluePlayers: match.blue,
         bestOf: match.bestOf,
     }
-    game.mappool = await getPool(match.pool);
     game.pickorder = setOrder(game.mappool, game.bestOf);
     try {
         if (bancho.isDisconnected())
             await bancho.connect();
-        game.channel = await bancho.createLobby('sawadatest');
+        game.channel = await bancho.createLobby(`Sawada Scrim #${match.matchcode}`);
     } catch (err) {
-        console.log(err);
-        console.log('failed to create lobby');
+        console.log('failed to create lobby:', err);
         return
     }
     game.lobby = game.channel.lobby;
     game.lobby.setSettings(BanchoLobbyTeamModes.TeamVs, BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
     lobbies.push(game.lobby);
     await setRandomBeatmap(game.lobby, game.mappool, game.pickorder[0]);
-    await game.lobby.setPassword(Math.random().toString(36));
+    //TODO: lock the slots and teams
+    await game.lobby.setPassword(crypto.randomBytes(10).toString('hex'));
     const players = game.redPlayers.concat(game.bluePlayers);
-    console.log(players)
     for (const player of players) {
         await game.lobby.invitePlayer(player);
     }
@@ -231,6 +231,8 @@ function eventHandle(game: Game) {
     const lobby = game.lobby!;
     const channel = game.channel!;
     lobby.on('allPlayersReady', async () => {
+        //TODO: check that the lobby is full
+        //not sure what to do for if the players want the match to continue while missing a player
         await lobby.startMatch(10);
     });
 
@@ -238,6 +240,7 @@ function eventHandle(game: Game) {
         let scoreRed = 0;
         let scoreBlue = 0;
         const scores = lobby.scores;
+        //TODO: Add NM debuff for FM
         for (let i = 0; i < scores.length; i++) {
             if (scores[i].player.team === 'Red') {
                 scoreRed += scores[i].score;
