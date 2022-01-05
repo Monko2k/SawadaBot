@@ -1,12 +1,12 @@
-import { BanchoClient, BanchoLobby, BanchoMod, BanchoMods, BanchoMultiplayerChannel,  BanchoLobbyTeamModes, BanchoLobbyWinConditions, BanchoLobbyPlayer, ChannelMessage } from 'bancho.js';
-import { Client, Mode } from 'nodesu';
-import { Channel, Client as DiscordClient, Intents, Interaction, Message, MessageCollector, MessageEmbed, PresenceManager } from 'discord.js';
+import * as bancho from 'bancho.js';
+import { Client, Mode, Mods } from 'nodesu';
+import { Channel, Client as DiscordClient, Intents, Interaction, Message, MessageCollector, MessageEmbed, PresenceManager, TextChannel } from 'discord.js';
 import { config } from './config.json';
 import * as crypto from 'crypto';
 const api = new Client(config.apiKey);
-const bancho = new BanchoClient(config);
+const banchoclient = new bancho.BanchoClient(config);
 const discordclient = new DiscordClient({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
-let lobbies: BanchoLobby[] = [];
+let lobbies: bancho.BanchoLobby[] = [];
 
 interface Mappool {
   name: string;
@@ -25,11 +25,11 @@ interface MatchInfo {
     teamSize: number;
     red: string[];
     blue: string[];
+    discordchannel: TextChannel;
 }
 
 interface Game {
-    channel?: BanchoMultiplayerChannel;
-    lobby?: BanchoLobby;
+    channel?: bancho.BanchoMultiplayerChannel;
     mappool: Mappool;
     pickindex: number;
     pointsRed: number;
@@ -55,7 +55,7 @@ function initDiscord() {
         for (let i = 0; i < lobbies.length; i++) {
             await lobbies[i].closeLobby();
         }
-        await bancho.disconnect();
+        await banchoclient.disconnect();
         process.exit();
     })
 }
@@ -113,41 +113,26 @@ async function handleMessage(m: Message) {
             })
             .then((res) => {
                 const match: MatchInfo = {
-                    matchcode: crypto.randomBytes(3).toString('hex'),
+                    matchcode: crypto.randomBytes(3).toString('hex').toUpperCase(),
                     mappool: res,
                     bestOf: bestOf,
                     teamSize: teamSize,
                     red: red,
                     blue: blue,
+                    discordchannel: m.channel as TextChannel,
                 }
-                const embed = new MessageEmbed()
-                    .setColor('#FFFFFF')
-                    .setTitle(`Sawada Scrim Match #${match.matchcode}`)
-                    .setDescription(`BO${bestOf} ${teamSize}v${teamSize}`)
-                    .addFields(
-                        { name: 'Mappool', value: pool.toString() },
-                        { name: 'Team 1', value: red.join(', ') },
-                        { name: 'Team 2', value: blue.join(', ') },
-                    )
-                    .setTimestamp();
-                m.channel.send({ embeds: [embed]});
                 initGame(match);
             })
             .catch((err) => {
-                if (err !== 'Input Error') {
-                    m.channel.send(err);
-                }
+                m.channel.send(err);
             })
         
 
     }
 }
 
-
 async function awaitResponse(m: Message): Promise<string> {
-    const filter = (response: Message) => {
-        return (response.author.id === m.author.id)
-    }
+    const filter = (response: Message) => (response.author.id === m.author.id)
     return new Promise<string>((resolve, reject) => {
         m.channel.awaitMessages({ filter, max: 1, time: 30000, errors: ['time'] })
             .then(collected => {
@@ -204,48 +189,69 @@ async function initGame(match: MatchInfo) {
         bluePlayers: match.blue,
         bestOf: match.bestOf,
     }
+    const embed = new MessageEmbed()
+        .setColor(`#${match.matchcode}`)
+        .setTitle(`Sawada Scrim Match #${match.matchcode}`)
+        .setDescription(`BO${match.bestOf} ${match.teamSize}v${match.teamSize}`)
+        .addFields(
+            { name: 'Mappool', value: match.mappool.name },
+            { name: 'Team 1', value: match.red.join(', ') },
+            { name: 'Team 2', value: match.blue.join(', ') },
+        )
+        .setTimestamp();
+    match.discordchannel.send({ embeds: [embed]});
     game.pickorder = setOrder(game.mappool, game.bestOf);
     try {
-        if (bancho.isDisconnected())
-            await bancho.connect();
-        game.channel = await bancho.createLobby(`Sawada Scrim #${match.matchcode}`);
+        if (banchoclient.isDisconnected())
+            await banchoclient.connect();
+        game.channel = await banchoclient.createLobby(`Sawada Scrim #${match.matchcode}`);
     } catch (err) {
         console.log('failed to create lobby:', err);
         return
     }
-    game.lobby = game.channel.lobby;
-    game.lobby.setSettings(BanchoLobbyTeamModes.TeamVs, BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
-    lobbies.push(game.lobby);
-    await setRandomBeatmap(game.lobby, game.mappool, game.pickorder[0]);
+    const lobby = game.channel.lobby;
+    lobby.setSettings(bancho.BanchoLobbyTeamModes.TeamVs, bancho.BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
+    lobbies.push(lobby);
+    await setRandomBeatmap(game.channel, game.mappool, game.pickorder[0]);
     //TODO: lock the slots and teams
-    await game.lobby.setPassword(crypto.randomBytes(10).toString('hex'));
+    await lobby.setPassword(crypto.randomBytes(10).toString('hex'));
     const players = game.redPlayers.concat(game.bluePlayers);
     for (const player of players) {
-        await game.lobby.invitePlayer(player);
+        await lobby.invitePlayer(player);
     }
-    game.lobby.invitePlayer('Monko2k');
+    lobby.invitePlayer('Monko2k');
     eventHandle(game);
 }
 
 function eventHandle(game: Game) {
-    const lobby = game.lobby!;
-    const channel = game.channel!;
+    const tie = (game.bestOf > 1 && game.pointsRed === game.pointsBlue && game.pointsBlue === Math.floor(game.bestOf/2));
+    const winpoints = Math.ceil(game.bestOf/2);
+    const channel = game.channel!
+    const lobby = channel.lobby;
     lobby.on('allPlayersReady', async () => {
+        console.log(lobby.slots)
         //TODO: check that the lobby is full
         //not sure what to do for if the players want the match to continue while missing a player
         await lobby.startMatch(10);
     });
+    lobby.on("playing", () => console.log(lobby.slots))
+
+    lobby.on("mods", () => console.log('poon'))
 
     lobby.on('matchFinished', async () => {
         let scoreRed = 0;
         let scoreBlue = 0;
         const scores = lobby.scores;
         //TODO: Add NM debuff for FM
+        console.log(scores);
         for (let i = 0; i < scores.length; i++) {
-            if (scores[i].player.team === 'Red') {
-                scoreRed += scores[i].score;
-            } else {
-                scoreBlue += scores[i].score;
+            if (scores[i].pass) {
+                let score = scores[i].score;
+                if (lobby.freemod && !tie) {
+                    console.log(scores[i].player.mods.length)
+                    // player mods doesn't work 
+                }
+                (scores[i].player.team === 'Red') ? scoreRed += score : scoreBlue += score;
             }
         }
         const diff = Math.abs(scoreRed - scoreBlue);
@@ -259,18 +265,18 @@ function eventHandle(game: Game) {
             channel.sendMessage('Tied scores: Neither team earns a point');
         }
         sendScore();
-        if ( game.pointsRed === Math.ceil(game.bestOf/2)) {
+        if (game.pointsRed === winpoints) {
             channel.sendMessage('Red wins the match');
             endMatch();
-        } else if ( game.pointsBlue ===  Math.ceil(game.bestOf/2)) {
+        } else if (game.pointsBlue === winpoints) {
             channel.sendMessage('Blue wins the match');
             endMatch();
-        } else if ( game.pointsRed === game.pointsBlue && game.pointsBlue === Math.floor(game.bestOf/2)) {
+        } else if (tie) {
             channel.sendMessage('Scores are tied. A tiebreaker will be played')
             await setTieBreaker();
         } else {
             game.pickindex++
-            await setRandomBeatmap(game.lobby!, game.mappool!, game.pickorder[game.pickindex]);
+            await setRandomBeatmap(game.channel!, game.mappool, game.pickorder[game.pickindex]);
         }
     });
 
@@ -283,19 +289,18 @@ function eventHandle(game: Game) {
     });
 
     function sendScore() {
-        channel.sendMessage(`[Red] ${game.pointsRed} : ${game.pointsBlue} [Blue]`);
+        channel.sendMessage(`Current Score: Red ${game.pointsRed} : ${game.pointsBlue} Blue`);
     };
     async function endMatch() {
-        channel.sendMessage(`Final score: [Red] ${game.pointsRed} : ${game.pointsBlue} [Blue]`);
+        channel.sendMessage(`Final score: Red ${game.pointsRed} : ${game.pointsBlue} Blue`);
         channel.sendMessage('Lobby will automatically close in 30 seconds');
         await new Promise(r => setTimeout(r, 30000));
         await lobby.closeLobby();
         // I think this can fail if two lobbies end at exactly the same time
         // this bot isn't designed to be used by a lot of people at once so I will assume that this is ok for now lol
-        const index = lobbies.indexOf(lobby);
-        lobbies.splice(index, 1);
+        lobbies.splice(lobbies.indexOf(lobby), 1);
     };
-    async function setTeam(player: BanchoLobbyPlayer) {
+    async function setTeam(player: bancho.BanchoLobbyPlayer) {
         if (game.redPlayers.includes(player.user.username)) {
             await lobby.changeTeam(player, 'Red')
         }
@@ -304,45 +309,52 @@ function eventHandle(game: Game) {
         }
     }
     async function setTieBreaker() {
-        const modgroupindex = game.mappool!.modgroups.length - 1;
-        const modgroup = game.mappool!.modgroups[modgroupindex];
+        const modgroup = game.mappool.modgroups.at(-1)!;
         const mapindex = Math.floor(Math.random() * modgroup.maps.length);
         const map = Number(modgroup.maps[mapindex]);
         await lobby.setMap(map, Mode.osu);
-        await lobby.setMods([BanchoMods.None], true);
+        await lobby.setMods([bancho.BanchoMods.None], true);
     }
 
 }
 
-async function setRandomBeatmap(lobby: BanchoLobby, mappool: Mappool, modgroupindex: number) {
+async function setRandomBeatmap(channel: bancho.BanchoMultiplayerChannel, mappool: Mappool, modgroupindex: number) {
+    const lobby = channel.lobby;
     const modgroup = mappool.modgroups[modgroupindex];
-    const mapindex = Math.floor(Math.random() * modgroup.maps.length);
+    let mapindex = Math.floor(Math.random() * modgroup.maps.length);
+    while (modgroup.maps[mapindex] === '0') {
+        mapindex = Math.floor(Math.random() * modgroup.maps.length);
+        console.log('roll')
+    }
     const map = Number(modgroup.maps[mapindex]);
-    let mods: BanchoMod[];
+    mappool.modgroups[modgroupindex].maps[mapindex] = '0';
+    let mods: bancho.BanchoMod[];
     let freemod = false;
     // no idea why modstring doesn't work Lol
     switch(modgroup.mod) {
         case 'NM':
-            mods = [BanchoMods.NoFail];
+            mods = [bancho.BanchoMods.NoFail];
             break;
         case 'HD':
-            mods = [BanchoMods.Hidden, BanchoMods.NoFail];
+            mods = [bancho.BanchoMods.Hidden, bancho.BanchoMods.NoFail];
             break;
         case 'HR': 
-            mods = [BanchoMods.HardRock, BanchoMods.NoFail];
+            mods = [bancho.BanchoMods.HardRock, bancho.BanchoMods.NoFail];
             break;
         case 'DT': 
-            mods = [BanchoMods.DoubleTime, BanchoMods.NoFail];
+            mods = [bancho.BanchoMods.DoubleTime, bancho.BanchoMods.NoFail];
             break;
         case 'FM':
         case 'TB':
-            mods = [BanchoMods.None]
+            mods = [bancho.BanchoMods.None]
             freemod = true;
             break;
     }
+    channel.sendMessage(`Next Map: ${modgroup.mod}${mapindex + 1}`)
+    if (freemod)
+        channel.sendMessage('Allowed Mods: HD, HR, EZ, FL, NF, NM (0.7x multiplier)')
     await lobby.setMap(map, Mode.osu);
     await lobby.setMods(mods!, freemod);
-    mappool.modgroups[modgroupindex].maps.splice(mapindex, 1);
 }
 
 initDiscord();
