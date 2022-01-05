@@ -1,11 +1,11 @@
-import { BanchoClient, BanchoLobby, BanchoMod, BanchoMods, BanchoMultiplayerChannel,  BanchoLobbyTeamModes, BanchoLobbyWinConditions, BanchoLobbyPlayer, ChannelMessage } from "bancho.js";
-import { Client, Mode } from "nodesu";
-import { Channel, Client as DiscordClient, Intents, Interaction, Message, MessageCollector, MessageEmbed, PresenceManager } from "discord.js";
-import { config } from "./config.json";
+import { BanchoClient, BanchoLobby, BanchoMod, BanchoMods, BanchoMultiplayerChannel,  BanchoLobbyTeamModes, BanchoLobbyWinConditions, BanchoLobbyPlayer, ChannelMessage } from 'bancho.js';
+import { Client, Mode } from 'nodesu';
+import { Channel, Client as DiscordClient, Intents, Interaction, Message, MessageCollector, MessageEmbed, PresenceManager } from 'discord.js';
+import { config } from './config.json';
 const api = new Client(config.apiKey);
 const bancho = new BanchoClient(config);
 const discordclient = new DiscordClient({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
-
+let lobbies: BanchoLobby[] = [];
 
 interface Mappool {
   name: string;
@@ -41,14 +41,21 @@ interface Game {
 
 
 function initDiscord() {
-    discordclient.on("messageCreate", handleMessage);
+    discordclient.on('messageCreate', handleMessage);
     try {
         discordclient.login(config.token);
     } catch (err) {
         console.log(err);
         return;
     }
-    console.log("Initialized Discord Client");
+    console.log('Initialized Discord Client');
+    process.on('SIGINT', async () => {
+        for (let i = 0; i < lobbies.length; i++) {
+            lobbies[i].closeLobby();
+        }
+        await bancho.disconnect();
+        process.exit();
+    })
 }
 
 async function handleMessage(m: Message) {
@@ -62,30 +69,47 @@ async function handleMessage(m: Message) {
         let teamSize: number;
         let red: string[];
         let blue: string[];
-        m.reply("Enter team size (1-8)")
+        m.reply('Enter team size (1-8)')
             .then(async () => {
                 teamSize = Number(await awaitResponse(m));
+                if (teamSize < 1 || teamSize > 8) {
+                    m.channel.send('Invalid teamsize');
+                    throw 'Input Error';
+                }
             })
             .then(async () => {
-                m.reply("Enter BestOf")
+                m.reply('Enter BestOf (1-13)')
                 bestOf = Number(await awaitResponse(m));
+                if (bestOf < 1 || bestOf > 13 || !Number.isInteger(bestOf) || bestOf%2 !== 1) {
+                    m.channel.send('Invalid BestOf');
+                    throw 'Input Error';
+                }
             })
             .then(async () => {
-                m.reply("Enter Team 1 members")
+                m.reply('Enter Team 1 members (comma separated)')
                 red = (await awaitResponse(m)).split(',');
-                red.forEach((e) => {
-                    e = e.trim();
+                console.log(red.length)
+                if (red.length !== teamSize) {
+                    m.channel.send('Invalid number of members');
+                    throw 'Input Error';
+                }
+                red = red.map((e) => {
+                    return e.trim();
                 })
             })
             .then(async () => {
-                m.reply("Enter Team 2 members")
+                m.reply('Enter Team 2 members (comma separated)')
                 blue = (await awaitResponse(m)).split(',');
-                blue.forEach((e) => {
-                    e = e.trim();
+                if (blue.length !== teamSize) {
+                    m.channel.send('Invalid number of members');
+                    throw 'Input Error';
+                }
+                blue = blue.map((e) => {
+                    return e.trim();
                 })
             })
             .then(async () => {
-                m.reply("Enter Mappool")
+                m.reply('Enter Mappool')
                 pool = await awaitResponse(m);
             })
             .then(() => {
@@ -110,6 +134,9 @@ async function handleMessage(m: Message) {
                 m.channel.send({ embeds: [embed]});
                 initGame(match);
             })
+            .catch((err) => {
+                //catch user errors, but don't do anything with them for now 
+            })
         
 
     }
@@ -125,7 +152,7 @@ async function awaitResponse(m: Message): Promise<string> {
             .then(collected => {
                 resolve(collected.first()!.content)
             }).catch(() => {
-                m.channel.send("Setup timed out");
+                m.channel.send('Setup timed out');
             })
     }) 
 }
@@ -178,32 +205,36 @@ async function initGame(match: MatchInfo) {
     game.mappool = await getPool(match.pool);
     game.pickorder = setOrder(game.mappool, game.bestOf);
     try {
-        await bancho.connect();
-        game.channel = await bancho.createLobby("sawadatest");
+        if (bancho.isDisconnected())
+            await bancho.connect();
+        game.channel = await bancho.createLobby('sawadatest');
     } catch (err) {
         console.log(err);
-        console.log("failed to create lobby");
+        console.log('failed to create lobby');
         return
     }
     game.lobby = game.channel.lobby;
     game.lobby.setSettings(BanchoLobbyTeamModes.TeamVs, BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
+    lobbies.push(game.lobby);
     await setRandomBeatmap(game.lobby, game.mappool, game.pickorder[0]);
-    await game.lobby.setPassword((Math.random()*1e32).toString(36));
+    await game.lobby.setPassword(Math.random().toString(36));
     const players = game.redPlayers.concat(game.bluePlayers);
+    console.log(players)
     for (const player of players) {
         await game.lobby.invitePlayer(player);
     }
+    game.lobby.invitePlayer('Monko2k');
     eventHandle(game);
 }
 
 function eventHandle(game: Game) {
     const lobby = game.lobby!;
     const channel = game.channel!;
-    lobby.on("allPlayersReady", async () => {
+    lobby.on('allPlayersReady', async () => {
         await lobby.startMatch(10);
     });
 
-    lobby.on("matchFinished", async () => {
+    lobby.on('matchFinished', async () => {
         let scoreRed = 0;
         let scoreBlue = 0;
         const scores = lobby.scores;
@@ -222,17 +253,17 @@ function eventHandle(game: Game) {
             channel.sendMessage(`Blue wins by ${diff}`)
             game.pointsBlue++;
         } else {
-            channel.sendMessage("Tied scores: Neither team earns a point");
+            channel.sendMessage('Tied scores: Neither team earns a point');
         }
         sendScore();
         if ( game.pointsRed === Math.ceil(game.bestOf/2)) {
-            channel.sendMessage("Red wins the match");
+            channel.sendMessage('Red wins the match');
             endMatch();
         } else if ( game.pointsBlue ===  Math.ceil(game.bestOf/2)) {
-            channel.sendMessage("Blue wins the match");
+            channel.sendMessage('Blue wins the match');
             endMatch();
         } else if ( game.pointsRed === game.pointsBlue && game.pointsBlue === Math.floor(game.bestOf/2)) {
-            channel.sendMessage("Scores are tied. A tiebreaker will be played")
+            channel.sendMessage('Scores are tied. A tiebreaker will be played')
             await setTieBreaker();
         } else {
             game.pickindex++
@@ -240,11 +271,11 @@ function eventHandle(game: Game) {
         }
     });
 
-    lobby.on("playerJoined", async (res) => {
+    lobby.on('playerJoined', async (res) => {
         await setTeam(res.player);
     });
 
-    lobby.on("playerChangedTeam", async (res) => {
+    lobby.on('playerChangedTeam', async (res) => {
         await setTeam(res.player);
     });
 
@@ -253,17 +284,20 @@ function eventHandle(game: Game) {
     };
     async function endMatch() {
         channel.sendMessage(`Final score: [Red] ${game.pointsRed} : ${game.pointsBlue} [Blue]`);
-        channel.sendMessage("Lobby will automatically close in 30 seconds");
+        channel.sendMessage('Lobby will automatically close in 30 seconds');
         await new Promise(r => setTimeout(r, 30000));
         await lobby.closeLobby();
-        await bancho.disconnect();
+        // I think this can fail if two lobbies end at exactly the same time
+        // this bot isn't designed to be used by a lot of people at once so I will assume that this is ok for now lol
+        const index = lobbies.indexOf(lobby);
+        lobbies.splice(index, 1);
     };
     async function setTeam(player: BanchoLobbyPlayer) {
         if (game.redPlayers.includes(player.user.username)) {
-            await lobby.changeTeam(player, "Red")
+            await lobby.changeTeam(player, 'Red')
         }
         if (game.bluePlayers.includes(player.user.username)) {
-            await lobby.changeTeam(player, "Blue")
+            await lobby.changeTeam(player, 'Blue')
         }
     }
     async function setTieBreaker() {
@@ -285,20 +319,20 @@ async function setRandomBeatmap(lobby: BanchoLobby, mappool: Mappool, modgroupin
     let freemod = false;
     // no idea why modstring doesn't work Lol
     switch(modgroup.mod) {
-        case "NM":
+        case 'NM':
             mods = [BanchoMods.NoFail];
             break;
-        case "HD":
+        case 'HD':
             mods = [BanchoMods.Hidden, BanchoMods.NoFail];
             break;
-        case "HR": 
+        case 'HR': 
             mods = [BanchoMods.HardRock, BanchoMods.NoFail];
             break;
-        case "DT": 
+        case 'DT': 
             mods = [BanchoMods.DoubleTime, BanchoMods.NoFail];
             break;
-        case "FM":
-        case "TB":
+        case 'FM':
+        case 'TB':
             mods = [BanchoMods.None]
             freemod = true;
             break;
