@@ -4,12 +4,15 @@
   "description": "osu match bot",
   "main": "index.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "start": "tsc && node index.js"
   },
   "author": "Monko2k",
   "license": "ISC",
   "dependencies": {
     "bancho.js": "^0.9.7",
+    "discord.js": "^13.5.0",
+    "eslint": "^8.6.0",
     "nodesu": "^0.7.3"
   },
   "devDependencies": {
