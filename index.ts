@@ -289,10 +289,6 @@ function eventHandle(game: Game) {
         await setTeam(res.player);
     });
 
-    lobby.on('playerChangedTeam', async (res) => {
-        await setTeam(res.player);
-    });
-
     function sendScore() {
         channel.sendMessage(`Current Score: Red ${game.pointsRed} : ${game.pointsBlue} Blue`);
     };
