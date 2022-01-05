@@ -1,6 +1,6 @@
 import { BanchoClient, BanchoLobby, BanchoMod, BanchoMods, BanchoMultiplayerChannel,  BanchoLobbyTeamModes, BanchoLobbyWinConditions, BanchoLobbyPlayer, ChannelMessage } from "bancho.js";
 import { Client, Mode } from "nodesu";
-import { Client as DiscordClient, Intents, Interaction, Message, MessageCollector, PresenceManager } from "discord.js";
+import { Channel, Client as DiscordClient, Intents, Interaction, Message, MessageCollector, MessageEmbed, PresenceManager } from "discord.js";
 import { config } from "./config.json";
 const api = new Client(config.apiKey);
 const bancho = new BanchoClient(config);
@@ -47,7 +47,6 @@ function initDiscord() {
     } catch (err) {
         console.log(err);
         return;
-
     }
     console.log("Initialized Discord Client");
 }
@@ -58,27 +57,58 @@ async function handleMessage(m: Message) {
 
     const prefix = '?';
     if (m.content === `${prefix}startmatch`) {
+        let pool: string;
+        let bestOf: number;
+        let teamSize: number;
+        let red: string[];
+        let blue: string[];
         m.reply("Enter team size (1-8)")
             .then(async () => {
-                let param = await awaitResponse(m);
-                console.log(param);
+                teamSize = Number(await awaitResponse(m));
             })
             .then(async () => {
                 m.reply("Enter BestOf")
-                let param = await awaitResponse(m);
-                console.log(param);
+                bestOf = Number(await awaitResponse(m));
             })
-            .then( async () => {
+            .then(async () => {
                 m.reply("Enter Team 1 members")
-                let param = await awaitResponse(m);
+                red = (await awaitResponse(m)).split(',');
+                red.forEach((e) => {
+                    e = e.trim();
+                })
             })
-            .then( async () => {
+            .then(async () => {
                 m.reply("Enter Team 2 members")
-                let param = await awaitResponse(m);
+                blue = (await awaitResponse(m)).split(',');
+                blue.forEach((e) => {
+                    e = e.trim();
+                })
             })
-            .then( async () => {
+            .then(async () => {
                 m.reply("Enter Mappool")
-                let param = await awaitResponse(m);
+                pool = await awaitResponse(m);
+            })
+            .then(() => {
+                const match: MatchInfo = {
+                    pool: pool,
+                    bestOf: bestOf,
+                    teamSize: teamSize,
+                    red: red,
+                    blue: blue,
+                }
+                const embed = new MessageEmbed()
+                    .setColor('#FFFFFF')
+                    .setTitle('Sawada Scrim Match')
+                    .setDescription(`BO${bestOf} ${teamSize}v${teamSize}`)
+                    .addFields(
+                        { name: 'Mappool', value: pool.toString() },
+                        { name: '\u200B', value: '\u200B' },
+                        { name: 'Team 1', value: red.toString() },
+                        { name: 'Team 2', value: blue.toString() },
+                    )
+                    .setTimestamp();
+                m.channel.send({ embeds: [embed]});
+                initGame(match);
             })
         
 
@@ -91,7 +121,7 @@ async function awaitResponse(m: Message): Promise<string> {
         return (response.author.id === m.author.id)
     }
     return new Promise<string>((resolve) => {
-        m.channel.awaitMessages({ filter, max: 1, time: 5000, errors: ['time'] })
+        m.channel.awaitMessages({ filter, max: 1, time: 30000, errors: ['time'] })
             .then(collected => {
                 resolve(collected.first()!.content)
             }).catch(() => {
@@ -170,7 +200,7 @@ function eventHandle(game: Game) {
     const lobby = game.lobby!;
     const channel = game.channel!;
     lobby.on("allPlayersReady", async () => {
-        await lobby.startMatch();
+        await lobby.startMatch(10);
     });
 
     lobby.on("matchFinished", async () => {
@@ -278,12 +308,4 @@ async function setRandomBeatmap(lobby: BanchoLobby, mappool: Mappool, modgroupin
     mappool.modgroups[modgroupindex].maps.splice(mapindex, 1);
 }
 
-const testmatch: MatchInfo = {
-    pool: "906bcbf4-6675-3d23-b888-eff53539a19b",
-    bestOf: 3,
-    teamSize: 3,
-    red: ["Monko2k"],
-    blue: ["deadzoned"]
-}
-initGame(testmatch);
-//initDiscord();
+initDiscord();
