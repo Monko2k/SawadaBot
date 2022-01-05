@@ -66,7 +66,6 @@ async function handleMessage(m: Message) {
 
     const prefix = '?';
     if (m.content === `${prefix}startmatch`) {
-        let pool: string;
         let bestOf: number;
         let teamSize: number;
         let red: string[];
@@ -102,13 +101,18 @@ async function handleMessage(m: Message) {
                 blue = blue.map((e) => e.trim())
             })
             .then(async () => {
-                m.reply('Enter Mappool')
-                pool = await awaitResponse(m);
-                const mappool = await getPool(pool);
-                if (mappool) {
-                    return mappool
+                m.reply('Enter Mappool (https://oma.hwc.hr/pools, 2800+ elo pools)')
+                let poolid = await awaitResponse(m);
+                const re = /[^//]+$/;
+                if (re.test(poolid)) {
+                    const mappool = await getPool(poolid.match(re)![0]);
+                    if (mappool) {
+                        return mappool
+                    } else {
+                        throw 'Invalid mappool'
+                    }
                 } else {
-                    throw 'Invalid mappool'
+                    throw 'Invalid mappool URL format'
                 }
             })
             .then((res) => {
@@ -211,6 +215,7 @@ async function initGame(match: MatchInfo) {
     }
     const lobby = game.channel.lobby;
     lobby.setSettings(bancho.BanchoLobbyTeamModes.TeamVs, bancho.BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
+    lobby.updateSettings();
     lobbies.push(lobby);
     await setRandomBeatmap(game.channel, game.mappool, game.pickorder[0]);
     //TODO: lock the slots and teams
