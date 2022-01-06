@@ -247,7 +247,7 @@ async function initGame(match: MatchInfo) {
         await confirm.react('❌');
         game.channel = await awaitConfirmReact(confirm, match.initmsg.author)
             .then(async res => {
-                await confirm.reactions.removeAll(); 
+                //await confirm.reactions.removeAll(); need perms
                 if (res !== '✅') 
                     throw 'Match Cancelled';
             })
