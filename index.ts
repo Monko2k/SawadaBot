@@ -140,7 +140,7 @@ async function handleMessage(m: Message) {
 async function awaitResponse(m: Message): Promise<string> {
     const filter = (response: Message) => (response.author.id === m.author.id)
     return new Promise<string>((resolve, reject) => {
-        m.channel.awaitMessages({ filter, max: 1, time: 30000, errors: ['time'] })
+        m.channel.awaitMessages({ filter, max: 1, time: 45000, errors: ['time'] })
             .then(collected => {
                 resolve(collected.first()!.content)
             })
