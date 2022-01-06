@@ -143,10 +143,25 @@ async function awaitResponse(m: Message): Promise<string> {
         m.channel.awaitMessages({ filter, max: 1, time: 30000, errors: ['time'] })
             .then(collected => {
                 resolve(collected.first()!.content)
-            }).catch(() => {
+            })
+            .catch(() => {
                 reject('Setup timed out');
             })
     }) 
+}
+
+async function awaitConfirmReact(m: Message, u: DiscordUser): Promise<string> {
+    // this function does not need to exist 
+    const filter = (reaction: MessageReaction, user: DiscordUser) => (user.id === u.id && (reaction.emoji.name === '✅' || reaction.emoji.name == '❌'))
+    return new Promise<string>((resolve, reject) => {
+        m.awaitReactions({ filter, max: 1, time: 15000, errors: ['time'] })
+            .then(collected => {
+                resolve(collected.first()?.emoji.name!);
+            })
+            .catch(() => { 
+                reject('Confirmation timed out');
+            })
+    })
 }
 
 function setOrder(mappool: Mappool, bestOf: number): Array<number> {
@@ -207,64 +222,66 @@ async function validateMembers(members: string[], allplayers: string[]): Promise
 }
 
 async function initGame(match: MatchInfo) {
-    let game: Game = {
-        pickindex: 1,
-        pointsRed: 0,
-        pointsBlue: 0,
-        pickorder: [],
-        match: match
-    }
-    let embedBase = new MessageEmbed()
-        .setColor(`#${match.matchcode}`)
-        .setTitle(`Sawada Scrim Match #${match.matchcode}`)
-        .setDescription(`BO${match.bestOf} ${match.teamSize}v${match.teamSize}`)
-        .addFields(
-            { name: 'Mappool', value: match.mappool.name },
-            { name: 'Team 1', value: match.redPlayers.map(e => e.username).join(', ') },
-            { name: 'Team 2', value: match.bluePlayers.map(e => e.username).join(', ') },
-        )
-        .setTimestamp();
+    try {
+        let game: Game = {
+            pickindex: 1,
+            pointsRed: 0,
+            pointsBlue: 0,
+            pickorder: [],
+            match: match
+        }
+        let embedBase = new MessageEmbed()
+            .setColor(`#${match.matchcode}`)
+            .setTitle(`Sawada Scrim Match #${match.matchcode}`)
+            .setDescription(`BO${match.bestOf} ${match.teamSize}v${match.teamSize}`)
+            .addFields(
+                { name: 'Mappool', value: match.mappool.name },
+                { name: 'Team 1', value: match.redPlayers.map(e => e.username).join(', ') },
+                { name: 'Team 2', value: match.bluePlayers.map(e => e.username).join(', ') },
+            )
+            .setTimestamp();
 
-    const embedPre = embedBase.setFooter('Confirm match settings to start the lobby');
-    const confirm = await match.initmsg.channel.send({ embeds: [embedPre] });
-    const filter = (reaction: MessageReaction, user: DiscordUser) => (user.id === match.initmsg.author.id && (reaction.emoji.name === '✅' || reaction.emoji.name == '❌'))
-            
-    game.channel = await confirm.react('✅')
-        .then(res => res.message.react('❌'))
-        .then(res => res.message.awaitReactions({ filter, max: 1, time: 15000, errors: ['time'] }))
-        .then(res => {
-            confirm.reactions.removeAll(); 
-            if (res.first()?.emoji.name !== '✅') 
-                throw 'Match Cancelled';
-        })
-        .then(async () => {
-            if (banchoclient.isDisconnected())
-                await banchoclient.connect();
-            const channel = await banchoclient.createLobby(`Sawada Scrim #${match.matchcode}`);
-            game.pickorder = setOrder(match.mappool, match.bestOf);
-            embedBase.setURL(`https://osu.ppy.sh/community/matches/${channel.lobby.id}`)
-            return channel;
-        })
-        .catch (async err => {
-            embedBase.setFooter('Match Cancelled ❌');
-            await confirm.edit({ embeds: [embedBase]});
-            throw err;
-        })
-    await confirm.edit({ embeds: [embedBase]});
-    const lobby = game.channel.lobby;
-    await lobby.setSettings(bancho.BanchoLobbyTeamModes.TeamVs, bancho.BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
-    await lobby.lockSlots();
-    await lobby.updateSettings();
-    lobbies.push(lobby);
-    await setRandomBeatmap(game.channel, match.mappool, game.pickorder[0]);
-    await lobby.setPassword(crypto.randomBytes(10).toString('hex'));
-    for (const player of match.redPlayers) {
-        await lobby.invitePlayer(player.username);
+        const embedPre = embedBase.setFooter('Confirm match settings to start the lobby');
+        const confirm = await match.initmsg.channel.send({ embeds: [embedPre] });
+        await confirm.react('✅');
+        await confirm.react('❌');
+        game.channel = await awaitConfirmReact(confirm, match.initmsg.author)
+            .then(res => {
+                confirm.reactions.removeAll(); 
+                if (res !== '✅') 
+                    throw 'Match Cancelled';
+            })
+            .then(async () => {
+                if (banchoclient.isDisconnected())
+                    await banchoclient.connect();
+                const channel = await banchoclient.createLobby(`Sawada Scrim #${match.matchcode}`);
+                game.pickorder = setOrder(match.mappool, match.bestOf);
+                embedBase.setURL(`https://osu.ppy.sh/community/matches/${channel.lobby.id}`)
+                return channel;
+            })
+            .catch (async err => {
+                embedBase.setFooter(`❌ ${err}`);
+                await confirm.edit({ embeds: [embedBase]});
+                throw err;
+            })
+        await confirm.edit({ embeds: [embedBase]});
+        const lobby = game.channel.lobby;
+        await lobby.setSettings(bancho.BanchoLobbyTeamModes.TeamVs, bancho.BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
+        await lobby.lockSlots();
+        await lobby.updateSettings();
+        lobbies.push(lobby);
+        await setRandomBeatmap(game.channel, match.mappool, game.pickorder[0]);
+        await lobby.setPassword(crypto.randomBytes(10).toString('hex'));
+        for (const player of match.redPlayers) {
+            await lobby.invitePlayer(player.username);
+        }
+        for (const player of match.bluePlayers) {
+            await lobby.invitePlayer(player.username);
+        }
+        eventHandle(game);
+    } catch (err) {
+        console.log(err)
     }
-    for (const player of match.bluePlayers) {
-        await lobby.invitePlayer(player.username);
-    }
-    eventHandle(game);
 }
 
 function eventHandle(game: Game) {
