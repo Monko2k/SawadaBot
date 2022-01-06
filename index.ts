@@ -1,11 +1,11 @@
 import * as bancho from 'bancho.js';
-import { Client, LookupType, Mode, Mods, User } from 'nodesu';
-import { Channel, Client as DiscordClient, Intents, Interaction, Message, MessageCollector, MessageEmbed, PresenceManager, TextChannel } from 'discord.js';
+import { Client, Mode, User } from 'nodesu';
+import { Channel, Client as DiscordClient, Intents, Interaction, Message, MessageCollector, MessageEmbed, MessageReaction, User as DiscordUser } from 'discord.js';
 import { config } from './config.json';
 import * as crypto from 'crypto';
 const api = new Client(config.apiKey);
 const banchoclient = new bancho.BanchoClient(config);
-const discordclient = new DiscordClient({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
+const discordclient = new DiscordClient({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_MESSAGE_REACTIONS] });
 const prefix = config.prefix;
 let lobbies: bancho.BanchoLobby[] = [];
 
@@ -27,7 +27,7 @@ interface MatchInfo {
     redPlayers: User[];
     bluePlayers: User[];
     allPlayers: string[];
-    discordchannel: TextChannel;
+    initmsg: Message;
 }
 
 interface Game {
@@ -125,7 +125,7 @@ async function handleMessage(m: Message) {
                     redPlayers: red,
                     bluePlayers: blue,
                     allPlayers: all,
-                    discordchannel: m.channel as TextChannel,
+                    initmsg: m
                 }
                 initGame(match);
             })
@@ -214,33 +214,49 @@ async function initGame(match: MatchInfo) {
         pickorder: [],
         match: match
     }
-    const embed = new MessageEmbed()
+    let embedBase = new MessageEmbed()
         .setColor(`#${match.matchcode}`)
         .setTitle(`Sawada Scrim Match #${match.matchcode}`)
         .setDescription(`BO${match.bestOf} ${match.teamSize}v${match.teamSize}`)
         .addFields(
             { name: 'Mappool', value: match.mappool.name },
-            { name: 'Team 1', value: match.redPlayers.map((e) => e.username).join(', ') },
-            { name: 'Team 2', value: match.bluePlayers.map((e) => e.username).join(', ') },
+            { name: 'Team 1', value: match.redPlayers.map(e => e.username).join(', ') },
+            { name: 'Team 2', value: match.bluePlayers.map(e => e.username).join(', ') },
         )
         .setTimestamp();
-    match.discordchannel.send({ embeds: [embed]});
-    game.pickorder = setOrder(match.mappool, match.bestOf);
-    try {
-        if (banchoclient.isDisconnected())
-            await banchoclient.connect();
-        game.channel = await banchoclient.createLobby(`Sawada Scrim #${match.matchcode}`);
-    } catch (err) {
-        console.log('failed to create lobby:', err);
-        return
-    }
+
+    const embedPre = embedBase.setFooter('Confirm match settings to start the lobby');
+    const confirm = await match.initmsg.channel.send({ embeds: [embedPre] });
+    const filter = (reaction: MessageReaction, user: DiscordUser) => (user.id === match.initmsg.author.id && (reaction.emoji.name === '✅' || reaction.emoji.name == '❌'))
+            
+    game.channel = await confirm.react('✅')
+        .then(res => res.message.react('❌'))
+        .then(res => res.message.awaitReactions({ filter, max: 1, time: 15000, errors: ['time'] }))
+        .then(res => {
+            confirm.reactions.removeAll(); 
+            if (res.first()?.emoji.name !== '✅') 
+                throw 'Match Cancelled';
+        })
+        .then(async () => {
+            if (banchoclient.isDisconnected())
+                await banchoclient.connect();
+            const channel = await banchoclient.createLobby(`Sawada Scrim #${match.matchcode}`);
+            game.pickorder = setOrder(match.mappool, match.bestOf);
+            embedBase.setURL(`https://osu.ppy.sh/community/matches/${channel.lobby.id}`)
+            return channel;
+        })
+        .catch (async err => {
+            embedBase.setFooter('Match Cancelled ❌');
+            await confirm.edit({ embeds: [embedBase]});
+            throw err;
+        })
+    await confirm.edit({ embeds: [embedBase]});
     const lobby = game.channel.lobby;
     await lobby.setSettings(bancho.BanchoLobbyTeamModes.TeamVs, bancho.BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
     await lobby.lockSlots();
     await lobby.updateSettings();
     lobbies.push(lobby);
     await setRandomBeatmap(game.channel, match.mappool, game.pickorder[0]);
-    //TODO: lock the slots and teams
     await lobby.setPassword(crypto.randomBytes(10).toString('hex'));
     for (const player of match.redPlayers) {
         await lobby.invitePlayer(player.username);
@@ -373,8 +389,10 @@ async function setRandomBeatmap(channel: bancho.BanchoMultiplayerChannel, mappoo
             break;
     }
     channel.sendMessage(`Next Map: ${modgroup.mod}${mapindex + 1}`)
-    if (freemod)
+    if (freemod) {
         channel.sendMessage('Allowed Mods: HD, HR, EZ, FL, NF, NM (0.7x multiplier)')
+        channel.sendMessage("just kidding bot can't acceses mod data yet so do whatever Lol")
+    }
     await lobby.setMap(map, Mode.osu);
     await lobby.setMods(mods!, freemod);
 }
