@@ -89,7 +89,7 @@ async function handleMessage(m: Message) {
                 if (redNames.length !== teamSize) {
                     throw 'Invalid number of members';
                 }
-                redNames = redNames.map((e) => e.trim());
+                redNames = redNames.map(e => e.trim());
                 red = await validateMembers(redNames, all);
             })
             .then(async () => {
@@ -98,7 +98,7 @@ async function handleMessage(m: Message) {
                 if (blueNames.length !== teamSize) {
                     throw 'Invalid number of members';
                 }
-                blueNames = blueNames.map((e) => e.trim());
+                blueNames = blueNames.map(e => e.trim());
                 blue = await validateMembers(blueNames, all);
             })
             .then(async () => {
@@ -116,7 +116,7 @@ async function handleMessage(m: Message) {
                     throw 'Invalid mappool URL format'
                 }
             })
-            .then((res) => {
+            .then(async res => {
                 const match: MatchInfo = {
                     matchcode: crypto.randomBytes(3).toString('hex').toUpperCase(),
                     mappool: res,
@@ -127,9 +127,9 @@ async function handleMessage(m: Message) {
                     allPlayers: all,
                     initmsg: m
                 }
-                initGame(match);
+                await initGame(match);
             })
-            .catch((err) => {
+            .catch(err => {
                 m.channel.send(err);
             })
         
@@ -222,67 +222,63 @@ async function validateMembers(members: string[], allplayers: string[]): Promise
 }
 
 async function initGame(match: MatchInfo) {
-    try {
-        let game: Game = {
-            pickindex: 1,
-            pointsRed: 0,
-            pointsBlue: 0,
-            pickorder: [],
-            match: match
-        }
-        let embedBase = new MessageEmbed()
-            .setColor(`#${match.matchcode}`)
-            .setTitle(`Sawada Scrim Match #${match.matchcode}`)
-            .setDescription(`BO${match.bestOf} ${match.teamSize}v${match.teamSize}`)
-            .addFields(
-                { name: 'Mappool', value: match.mappool.name },
-                { name: 'Team 1', value: match.redPlayers.map(e => e.username).join(', ') },
-                { name: 'Team 2', value: match.bluePlayers.map(e => e.username).join(', ') },
-            )
-            .setTimestamp();
-
-        const embedPre = embedBase.setFooter('Confirm match settings to start the lobby');
-        const confirm = await match.initmsg.channel.send({ embeds: [embedPre] });
-        await confirm.react('✅');
-        await confirm.react('❌');
-        game.channel = await awaitConfirmReact(confirm, match.initmsg.author)
-            .then(async res => {
-                //await confirm.reactions.removeAll(); need perms
-                if (res !== '✅') 
-                    throw 'Match Cancelled';
-            })
-            .then(async () => {
-                if (banchoclient.isDisconnected())
-                    await banchoclient.connect();
-                const channel = await banchoclient.createLobby(`Sawada Scrim #${match.matchcode}`);
-                game.pickorder = setOrder(match.mappool, match.bestOf);
-                embedBase.setURL(`https://osu.ppy.sh/community/matches/${channel.lobby.id}`)
-                return channel;
-            })
-            .catch (async err => {
-                embedBase.setFooter(`❌ ${err}`);
-                await confirm.edit({ embeds: [embedBase]});
-                throw err;
-            })
-        await confirm.edit({ embeds: [embedBase]});
-        await match.initmsg.channel.send("This project is still very early in development https://github.com/Monko2k/SawadaBot\n Send feature requests/bug reports/invite requests to Monko2k#3672 on discord")
-        const lobby = game.channel.lobby;
-        await lobby.setSettings(bancho.BanchoLobbyTeamModes.TeamVs, bancho.BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
-        await lobby.lockSlots();
-        await lobby.updateSettings();
-        lobbies.push(lobby);
-        await setRandomBeatmap(game.channel, match.mappool, game.pickorder[0]);
-        await lobby.setPassword(crypto.randomBytes(10).toString('hex'));
-        for (const player of match.redPlayers) {
-            await lobby.invitePlayer(player.username);
-        }
-        for (const player of match.bluePlayers) {
-            await lobby.invitePlayer(player.username);
-        }
-        eventHandle(game);
-    } catch (err) {
-        console.log(err)
+    let game: Game = {
+        pickindex: 1,
+        pointsRed: 0,
+        pointsBlue: 0,
+        pickorder: [],
+        match: match
     }
+    let embedBase = new MessageEmbed()
+        .setColor(`#${match.matchcode}`)
+        .setTitle(`Sawada Scrim Match #${match.matchcode}`)
+        .setDescription(`BO${match.bestOf} ${match.teamSize}v${match.teamSize}`)
+        .addFields(
+            { name: 'Mappool', value: match.mappool.name },
+            { name: 'Team 1', value: match.redPlayers.map(e => e.username).join(', ') },
+            { name: 'Team 2', value: match.bluePlayers.map(e => e.username).join(', ') },
+        )
+        .setTimestamp();
+
+    const embedPre = embedBase.setFooter('Confirm match settings to start the lobby');
+    const confirm = await match.initmsg.channel.send({ embeds: [embedPre] });
+    await confirm.react('✅');
+    await confirm.react('❌');
+    game.channel = await awaitConfirmReact(confirm, match.initmsg.author)
+        .then(async res => {
+            //await confirm.reactions.removeAll(); need perms
+            if (res !== '✅') 
+                throw 'Match Cancelled';
+        })
+        .then(async () => {
+            if (banchoclient.isDisconnected())
+                await banchoclient.connect();
+            const channel = await banchoclient.createLobby(`Sawada Scrim #${match.matchcode}`);
+            game.pickorder = setOrder(match.mappool, match.bestOf);
+            embedBase.setURL(`https://osu.ppy.sh/community/matches/${channel.lobby.id}`)
+            return channel;
+        })
+        .catch (async err => {
+            embedBase.setFooter(`❌ ${err}`);
+            await confirm.edit({ embeds: [embedBase]});
+            throw err;
+        })
+    await confirm.edit({ embeds: [embedBase]});
+    await match.initmsg.channel.send("This project is still very early in development https://github.com/Monko2k/SawadaBot\n Send feature requests/bug reports/invite requests to Monko2k#3672 on discord")
+    const lobby = game.channel.lobby;
+    await lobby.setSettings(bancho.BanchoLobbyTeamModes.TeamVs, bancho.BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
+    await lobby.lockSlots();
+    await lobby.updateSettings();
+    lobbies.push(lobby);
+    await setRandomBeatmap(game.channel, match.mappool, game.pickorder[0]);
+    await lobby.setPassword(crypto.randomBytes(10).toString('hex'));
+    for (const player of match.redPlayers) {
+        await lobby.invitePlayer(player.username);
+    }
+    for (const player of match.bluePlayers) {
+        await lobby.invitePlayer(player.username);
+    }
+    eventHandle(game);
 }
 
 function eventHandle(game: Game) {
@@ -339,7 +335,7 @@ function eventHandle(game: Game) {
         }
     });
 
-    lobby.on('playerJoined', async (res) => {
+    lobby.on('playerJoined', async res => {
         await setTeam(res.player);
     });
 
@@ -356,9 +352,9 @@ function eventHandle(game: Game) {
         lobbies.splice(lobbies.indexOf(lobby), 1);
     };
     async function setTeam(player: bancho.BanchoLobbyPlayer) {
-        if (game.match.redPlayers.filter((e) => e.userId === player.user.id).length > 0) {
+        if (game.match.redPlayers.filter(e => e.userId === player.user.id).length > 0) {
             await lobby.changeTeam(player, 'Red');
-        } else if (game.match.bluePlayers.filter((e) => e.userId === player.user.id).length > 0) {
+        } else if (game.match.bluePlayers.filter(e => e.userId === player.user.id).length > 0) {
             await lobby.changeTeam(player, 'Blue');
         } else {
             await lobby.kickPlayer(player.user.username);
