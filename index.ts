@@ -246,8 +246,8 @@ async function initGame(match: MatchInfo) {
         await confirm.react('✅');
         await confirm.react('❌');
         game.channel = await awaitConfirmReact(confirm, match.initmsg.author)
-            .then(res => {
-                confirm.reactions.removeAll(); 
+            .then(async res => {
+                await confirm.reactions.removeAll(); 
                 if (res !== '✅') 
                     throw 'Match Cancelled';
             })
@@ -265,6 +265,7 @@ async function initGame(match: MatchInfo) {
                 throw err;
             })
         await confirm.edit({ embeds: [embedBase]});
+        await match.initmsg.channel.send("This project is still very early in development https://github.com/Monko2k/SawadaBot\n Send feature requests/bug reports/invite requests to Monko2k#3672 on discord")
         const lobby = game.channel.lobby;
         await lobby.setSettings(bancho.BanchoLobbyTeamModes.TeamVs, bancho.BanchoLobbyWinConditions.ScoreV2, match.teamSize * 2);
         await lobby.lockSlots();
