@@ -1,0 +1,9 @@
+{
+    "config": {
+        "username": "",
+        "password": "",
+        "apiKey": "",
+        "token": "",
+        "prefix": "?"
+    }
+}
