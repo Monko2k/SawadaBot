@@ -1,6 +1,6 @@
 export interface Mappool {
-  name: string;
-  modgroups: Modgroup[];
+    name: string;
+    modgroups: Modgroup[];
 }
 
 export interface Modgroup {
