@@ -36,7 +36,6 @@ function initDiscord() {
     console.log("Initialized Discord Client");
     process.on("exit", () => {
         // apparently this works
-        //TODO: get rid of the entire lobby list structure
         console.log("Closing lobbies...");
         for (let i = 0; i < lobbies.length; i++) {
             lobbies[i].closeLobby();
