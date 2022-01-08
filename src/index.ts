@@ -269,7 +269,10 @@ async function initGame(match: MatchInfo): Promise<Game> {
             .setColor("#51E8FE")
             .setURL("https://github.com/Monko2k/SawadaBot")
             .setDescription(
-                "Send feature requests/bug reports/invite requests to Monko2k#3672 on discord"
+                "Send feature requests and bug reports to Monko2k#3672 on discord"
+            )
+            .setFooter(
+                "Want this bot for your own server? DM me for an invite"
             );
         await match.initmsg.channel.send({ embeds: [devembed] });
         const game = new Game(match, gamechannel, lobbies);
