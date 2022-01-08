@@ -35,7 +35,7 @@ function initDiscord() {
     }
     console.log("Initialized Discord Client");
     process.on("exit", () => {
-        //this doesn't work
+        // apparently this works
         //TODO: get rid of the entire lobby list structure
         console.log("Closing lobbies...");
         for (let i = 0; i < lobbies.length; i++) {
@@ -223,7 +223,6 @@ async function initGame(match: MatchInfo): Promise<Game> {
                     value: match.bluePlayers.map((e) => e.username).join(", "),
                 }
             )
-            .setTimestamp()
             .setFooter("Confirm match settings to start the lobby");
         const confirm = await match.initmsg.channel.send({ embeds: [embed] });
         await confirm.react("✅");
@@ -267,6 +266,7 @@ async function initGame(match: MatchInfo): Promise<Game> {
         await confirm.edit({ embeds: [embed] });
         const devembed = new MessageEmbed()
             .setTitle("This project is still very early in development")
+            .setColor("#51E8FE")
             .setURL("https://github.com/Monko2k/SawadaBot")
             .setDescription(
                 "Send feature requests/bug reports/invite requests to Monko2k#3672 on discord"

@@ -20,6 +20,9 @@ export class Game {
     pickorder: number[] = [];
     match: MatchInfo;
     collector: BanchoLobby[];
+    timeout = setTimeout(() => {
+        this.timeoutLobby();
+    }, 300000);
 
     constructor(
         match: MatchInfo,
@@ -93,6 +96,7 @@ export class Game {
         });
 
         lobby.on("matchFinished", async () => {
+            this.resetTimeout();
             let scoreRed = 0;
             let scoreBlue = 0;
             const scores = lobby.scores;
@@ -143,6 +147,7 @@ export class Game {
         });
 
         lobby.on("playerJoined", async (res) => {
+            this.resetTimeout();
             await this.setTeam(res.player);
         });
     }
@@ -235,5 +240,17 @@ export class Game {
         }
         await lobby.setMap(map, Mode.osu);
         await lobby.setMods(mods!, freemod);
+    }
+
+    private resetTimeout() {
+        clearTimeout(this.timeout);
+        this.timeout = setTimeout(() => {
+            this.timeoutLobby();
+        }, 300000);
+    }
+
+    private timeoutLobby() {
+        this.channel.sendMessage("Lobby closed due to inactivity");
+        this.channel.lobby.closeLobby();
     }
 }
