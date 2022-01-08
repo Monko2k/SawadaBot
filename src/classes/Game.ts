@@ -164,8 +164,9 @@ export class Game {
         this.channel.sendMessage(
             "Lobby will automatically close in 30 seconds"
         );
-        await new Promise((r) => setTimeout(r, 30000));
-        await this.channel.lobby.closeLobby();
+        setTimeout(async () => {
+            await this.channel.lobby.closeLobby();
+        }, 30000);
         // I think this can fail if two lobbies end at exactly the same time
         // this bot isn't designed to be used by a lot of people at once so I will assume that this is ok for now lol
         this.collector.splice(this.collector.indexOf(this.channel.lobby), 1);
@@ -252,5 +253,6 @@ export class Game {
     private timeoutLobby() {
         this.channel.sendMessage("Lobby closed due to inactivity");
         this.channel.lobby.closeLobby();
+        this.collector.splice(this.collector.indexOf(this.channel.lobby), 1);
     }
 }
