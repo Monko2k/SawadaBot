@@ -95,13 +95,18 @@ export class Game {
             await lobby.startMatch(10);
         });
 
+        lobby.on("matchStarted", () => {
+            clearTimeout(this.timeout);
+        });
+
         lobby.on("matchFinished", async () => {
-            this.resetTimeout();
+            this.timeout = setTimeout(() => {
+                this.timeoutLobby();
+            }, 300000);
             let scoreRed = 0;
             let scoreBlue = 0;
             const scores = lobby.scores;
             //TODO: Add NM debuff for FM
-            console.log(lobby.scores);
             for (let i = 0; i < scores.length; i++) {
                 if (scores[i].pass) {
                     let score = scores[i].score;
