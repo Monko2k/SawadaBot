@@ -110,10 +110,11 @@ export class Game {
             for (let i = 0; i < scores.length; i++) {
                 if (scores[i].pass) {
                     let score = scores[i].score;
+                    /*
                     if (lobby.freemod && !tie) {
                         console.log(scores[i].player.mods.length);
                         // player mods doesn't work
-                    }
+                    }*/
                     scores[i].player.team === "Red"
                         ? (scoreRed += score)
                         : (scoreBlue += score);
