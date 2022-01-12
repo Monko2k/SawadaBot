@@ -10,7 +10,6 @@ import {
 import { MatchInfo } from "../definitions/Match";
 import * as crypto from "crypto";
 import { Mode } from "nodesu";
-import { Mappool } from "../definitions/Mappool";
 
 export class Game {
     channel: BanchoMultiplayerChannel;
@@ -88,21 +87,29 @@ export class Game {
 
         channel.on("message", (msg) => {
             if (msg.content == "!skip") {
+                console.log(msg);
             }
         });
 
         lobby.on("allPlayersReady", async () => {
-            console.log(lobby.slots);
             //TODO: check that the lobby is full
             //not sure what to do for if the players want the match to continue while missing a player
             await lobby.startMatch(10);
         });
 
         lobby.on("matchStarted", () => {
+            console.log("STARTED");
+            clearTimeout(this.timeout);
+        });
+
+        lobby.on("playing", () => {
+            console.log("PLAYING");
+            //do it again just in case
             clearTimeout(this.timeout);
         });
 
         lobby.on("matchFinished", async () => {
+            console.log("FINISHED");
             this.timeout = setTimeout(() => {
                 this.timeoutLobby();
             }, 300000);
@@ -246,6 +253,7 @@ export class Game {
     }
 
     private resetTimeout() {
+        console.log("RESET");
         clearTimeout(this.timeout);
         this.timeout = setTimeout(() => {
             this.timeoutLobby();
