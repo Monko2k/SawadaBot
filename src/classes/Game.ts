@@ -17,6 +17,7 @@ export class Game {
     pickindex = 1;
     pointsRed = 0;
     pointsBlue = 0;
+    skipvotes = [];
     pickorder: number[] = [];
     match: MatchInfo;
     collector: BanchoLobby[];
@@ -65,11 +66,7 @@ export class Game {
         );
         await lobby.lockSlots();
         await lobby.updateSettings();
-        await this.setRandomBeatmap(
-            this.channel,
-            this.match.mappool,
-            this.pickorder[0]
-        );
+        await this.setRandomBeatmap();
         await lobby.setPassword(crypto.randomBytes(10).toString("hex"));
         for (const player of this.match.redPlayers) {
             await lobby.invitePlayer(player.username);
@@ -88,6 +85,12 @@ export class Game {
         const winpoints = Math.ceil(this.match.bestOf / 2);
         const channel = this.channel!;
         const lobby = channel.lobby;
+
+        channel.on("message", (msg) => {
+            if (msg.content == "!skip") {
+            }
+        });
+
         lobby.on("allPlayersReady", async () => {
             console.log(lobby.slots);
             //TODO: check that the lobby is full
@@ -144,11 +147,7 @@ export class Game {
                 await this.setTieBreaker();
             } else {
                 this.pickindex++;
-                await this.setRandomBeatmap(
-                    this.channel!,
-                    this.match.mappool,
-                    this.pickorder[this.pickindex]
-                );
+                await this.setRandomBeatmap();
             }
         });
 
@@ -200,20 +199,16 @@ export class Game {
         await this.channel.lobby.setMods([BanchoMods.None], true);
     }
 
-    private async setRandomBeatmap(
-        channel: BanchoMultiplayerChannel,
-        mappool: Mappool,
-        modgroupindex: number
-    ) {
-        const lobby = channel.lobby;
-        const modgroup = mappool.modgroups[modgroupindex];
+    private async setRandomBeatmap() {
+        const modgroupindex = this.pickorder[this.pickindex];
+        const lobby = this.channel.lobby;
+        const modgroup = this.match.mappool.modgroups[modgroupindex];
         let mapindex = Math.floor(Math.random() * modgroup.maps.length);
         while (modgroup.maps[mapindex] === "0") {
             mapindex = Math.floor(Math.random() * modgroup.maps.length);
-            console.log("roll");
         }
         const map = Number(modgroup.maps[mapindex]);
-        mappool.modgroups[modgroupindex].maps[mapindex] = "0";
+        this.match.mappool.modgroups[modgroupindex].maps[mapindex] = "0";
         let mods: BanchoMod[];
         let freemod = false;
         // no idea why modstring doesn't work Lol
@@ -236,17 +231,18 @@ export class Game {
                 freemod = true;
                 break;
         }
-        channel.sendMessage(`Next Map: ${modgroup.mod}${mapindex + 1}`);
+        this.channel.sendMessage(`Next Map: ${modgroup.mod}${mapindex + 1}`);
         if (freemod) {
-            channel.sendMessage(
+            this.channel.sendMessage(
                 "Allowed Mods: HD, HR, EZ, FL, NF, NM (0.7x multiplier)"
             );
-            channel.sendMessage(
+            this.channel.sendMessage(
                 "just kidding bot can't acceses mod data yet so do whatever Lol"
             );
         }
         await lobby.setMap(map, Mode.osu);
         await lobby.setMods(mods!, freemod);
+        this.pickindex++;
     }
 
     private resetTimeout() {
