@@ -20,4 +20,6 @@ Wanna help dev? Come help dev
 - currently bot can't detect player mods, dunno why
 - I have no idea how many lobbies I'm allowed to run at once on my account
 - currently discord embed footers are set with a deprecated method, but I cba to figure out how else to add them 
+- for some reason the lobby timeout timer doesn't always get paused on map start
+- a bunch of the pools have deleted maps
 - Nothing is well tested 
