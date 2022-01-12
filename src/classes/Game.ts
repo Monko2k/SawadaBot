@@ -14,7 +14,7 @@ import { Mappool } from "../definitions/Mappool";
 
 export class Game {
     channel: BanchoMultiplayerChannel;
-    pickindex = 1;
+    pickindex = 0;
     pointsRed = 0;
     pointsBlue = 0;
     skipvotes = [];
@@ -254,7 +254,10 @@ export class Game {
 
     private timeoutLobby() {
         this.channel.sendMessage("Lobby closed due to inactivity");
-        this.channel.lobby.closeLobby();
-        this.collector.splice(this.collector.indexOf(this.channel.lobby), 1);
+        this.channel.sendMessage(
+            "not really but tell me when this happens when its not supposed to"
+        );
+        //this.channel.lobby.closeLobby();
+        //this.collector.splice(this.collector.indexOf(this.channel.lobby), 1);
     }
 }
