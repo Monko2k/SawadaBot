@@ -138,7 +138,9 @@ export class Game {
                 channel.sendMessage(`Blue wins by ${diff}`);
                 this.pointsBlue++;
             } else {
-                channel.sendMessage("Tied scores: Neither team earns a point");
+                channel.sendMessage("Tied scores: Both teams earn a point");
+                this.pointsRed++;
+                this.pointsBlue++;
             }
             this.sendScore();
             if (this.pointsRed === winpoints) {
@@ -253,11 +255,13 @@ export class Game {
     }
 
     private resetTimeout() {
-        console.log("RESET");
-        clearTimeout(this.timeout);
-        this.timeout = setTimeout(() => {
-            this.timeoutLobby();
-        }, 300000);
+        if (this.timeout !== null) {
+            console.log("RESET");
+            clearTimeout(this.timeout);
+            this.timeout = setTimeout(() => {
+                this.timeoutLobby();
+            }, 300000);
+        }
     }
 
     private timeoutLobby() {
