@@ -85,9 +85,12 @@ export class Game {
         const channel = this.channel!;
         const lobby = channel.lobby;
 
-        channel.on("message", (msg) => {
-            if (msg.content == "!skip") {
-                console.log(msg);
+        channel.on("message", async (msg) => {
+            if (msg.content.startsWith("!override")) {
+                const args = msg.content.split(" ");
+                if (args.length > 1) {
+                    await lobby.setMap(Number(args[1]), Mode.osu);
+                }
             }
         });
 
@@ -215,11 +218,7 @@ export class Game {
         const lobby = this.channel.lobby;
         const modgroup = this.match.mappool.modgroups[modgroupindex];
         let mapindex = Math.floor(Math.random() * modgroup.maps.length);
-        while (modgroup.maps[mapindex] === "0") {
-            mapindex = Math.floor(Math.random() * modgroup.maps.length);
-        }
         const map = Number(modgroup.maps[mapindex]);
-        this.match.mappool.modgroups[modgroupindex].maps[mapindex] = "0";
         let mods: BanchoMod[];
         let freemod = false;
         // no idea why modstring doesn't work Lol
@@ -252,11 +251,13 @@ export class Game {
                 "Allowed Mods: HD, HR, EZ, FL, NF, NM (0.7x multiplier)"
             );
             this.channel.sendMessage(
-                "just kidding bot can't acceses mod data yet so do whatever Lol"
+                "just kidding bot can't access mod data yet so do whatever Lol"
             );
         }
         await lobby.setMap(map, Mode.osu);
         await lobby.setMods(mods!, freemod);
+        modgroup.maps.splice(mapindex, 1);
+        console.log(this.match.mappool.modgroups[modgroupindex]);
         this.pickindex++;
     }
 
