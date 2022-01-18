@@ -2,6 +2,7 @@ import { Client, User } from "nodesu";
 import {
     Client as DiscordClient,
     Intents,
+    MappedInteractionTypes,
     Message,
     MessageEmbed,
     MessageReaction,
@@ -110,7 +111,7 @@ async function handleMessage(m: Message) {
                     throw "Invalid mappool URL format";
                 }
             })
-            .then(async (res) => {
+            .then((res) => {
                 const match: MatchInfo = {
                     matchcode: crypto
                         .randomBytes(3)
@@ -124,168 +125,153 @@ async function handleMessage(m: Message) {
                     allPlayers: all,
                     initmsg: m,
                 };
-                const game = await initGame(match);
-                lobbies.push(game.channel.lobby);
+                return match;
             })
-            .catch((err) => {
-                m.channel.send(err);
-            });
+            .then((res) => initGame(res))
+            .then((res) => lobbies.push(res.channel.lobby))
+            .catch((err) => m.channel.send(err));
     }
 }
 
 async function awaitResponse(m: Message): Promise<string> {
     const filter = (response: Message) => response.author.id === m.author.id;
-    return new Promise<string>((resolve, reject) => {
-        m.channel
-            .awaitMessages({ filter, max: 1, time: 45000, errors: ["time"] })
-            .then((collected) => {
-                resolve(collected.first()!.content);
-            })
-            .catch(() => {
-                reject("Setup timed out");
-            });
-    });
+    const response = m.channel
+        .awaitMessages({ filter, max: 1, time: 45000, errors: ["time"] })
+        .then((collected) => {
+            return collected.first()!.content;
+        })
+        .catch(() => {
+            return Promise.reject("Setup timed out");
+        });
+    return Promise.resolve(response);
 }
 
-async function awaitConfirmReact(m: Message, u: DiscordUser): Promise<string> {
+function awaitConfirmReact(m: Message, u: DiscordUser): Promise<string> {
     // this function does not need to exist
     const filter = (reaction: MessageReaction, user: DiscordUser) =>
         user.id === u.id &&
         (reaction.emoji.name === "✅" || reaction.emoji.name == "❌");
-    return new Promise<string>((resolve, reject) => {
-        m.awaitReactions({ filter, max: 1, time: 15000, errors: ["time"] })
-            .then((collected) => {
-                resolve(collected.first()?.emoji.name!);
-            })
-            .catch(() => {
-                reject("Confirmation timed out");
-            });
-    });
+    const reaction = m
+        .awaitReactions({ filter, max: 1, time: 15000, errors: ["time"] })
+        .then((collected) => {
+            return collected.first()?.emoji.name!;
+        })
+        .catch(() => {
+            return Promise.reject("Confirmation timed out");
+        });
+    return Promise.resolve(reaction);
 }
 
-async function getPool(pool: string, bestof: number): Promise<Mappool> {
+function getPool(pool: string, bestof: number): Promise<Mappool> {
     // TODO: put the pools in a nosql db and query, instead of this shit
-    return new Promise<Mappool>(async (resolve, reject) => {
-        try {
-            const data = (await import(
-                "../pools/" + pool + ".json"
-            )) as Mappool;
+    const data = import("../pools/" + pool + ".json")
+        .then((res) => {
             let mapcount = 0;
-            for (let i = 0; i < data.modgroups.length - 1; i++) {
-                mapcount += data.modgroups[i].maps.length;
+            for (let i = 0; i < res.modgroups.length - 1; i++) {
+                mapcount += res.modgroups[i].maps.length;
             }
             if (mapcount < bestof) {
-                reject("Invalid pool (mappool is too small for this bestOf");
-            } else {
-                resolve(data);
+                return Promise.reject(
+                    "Invalid pool (mappool is too small for this bestOf"
+                );
             }
-        } catch (err) {
-            reject("Invalid Pool");
-        }
-    });
+            return res as Mappool;
+        })
+        .catch(() => {
+            return Promise.reject("Invalid Pool");
+        });
+    return Promise.resolve(data);
 }
 
 async function validateMembers(
     members: string[],
     allplayers: string[]
 ): Promise<Array<User>> {
-    return new Promise<Array<User>>(async (resolve, reject) => {
-        let users: User[] = [];
-        for (let i = 0; i < members.length; i++) {
-            const data = await api.user.get(members[i]);
-            if (typeof data === "undefined") {
-                reject(`Couldn't find user ${members[i]}`);
-                return;
-            }
-            const player = new User(data); // what the hellll
-            if (allplayers.includes(player.userId.toString())) {
-                reject(
-                    `Player ${player.username} cannot be included multiple times`
-                );
-                return;
-            }
-            users.push(player);
-            allplayers.push(player.userId.toString());
+    let users: User[] = [];
+    for (let i = 0; i < members.length; i++) {
+        const data = await api.user.get(members[i]);
+        if (typeof data === "undefined") {
+            return Promise.reject(`Couldn't find user ${members[i]}`);
         }
-        resolve(users);
-    });
+        const player = new User(data); // what the hellll
+        if (allplayers.includes(player.userId.toString())) {
+            return Promise.reject(
+                `Player ${player.username} cannot be included multiple times`
+            );
+        }
+        users.push(player);
+        allplayers.push(player.userId.toString());
+    }
+    return Promise.resolve(users);
 }
 
 async function initGame(match: MatchInfo): Promise<Game> {
-    return new Promise<Game>(async (resolve, reject) => {
-        let embed = new MessageEmbed()
-            .setColor("#FFFFFF")
-            .setTitle(`Sawada Scrim Match #${match.matchcode}`)
-            .setDescription(
-                `BO${match.bestOf} ${match.teamSize}v${match.teamSize}`
-            )
-            .addFields(
-                { name: "Mappool", value: match.mappool.name },
-                {
-                    name: "Team 1",
-                    value: match.redPlayers.map((e) => e.username).join(", "),
-                },
-                {
-                    name: "Team 2",
-                    value: match.bluePlayers.map((e) => e.username).join(", "),
-                }
-            )
-            .setFooter("Confirm match settings to start the lobby");
-        const confirm = await match.initmsg.channel.send({ embeds: [embed] });
-        await confirm.react("✅");
-        await confirm.react("❌");
-        const gamechannel = await awaitConfirmReact(
-            confirm,
-            match.initmsg.author
+    let embed = new MessageEmbed()
+        .setColor("#FFFFFF")
+        .setTitle(`Sawada Scrim Match #${match.matchcode}`)
+        .setDescription(`BO${match.bestOf} ${match.teamSize}v${match.teamSize}`)
+        .addFields(
+            { name: "Mappool", value: match.mappool.name },
+            {
+                name: "Team 1",
+                value: match.redPlayers.map((e) => e.username).join(", "),
+            },
+            {
+                name: "Team 2",
+                value: match.bluePlayers.map((e) => e.username).join(", "),
+            }
         )
-            .then(async (res) => {
-                //await confirm.reactions.removeAll(); need perms
-                if (res !== "✅") {
-                    embed.setColor("#FF0000");
-                    throw "Match Cancelled";
-                } else {
-                    embed.setColor("#72F795");
-                    embed.setFooter("Match confirmed, creating lobby...");
-                }
-            })
-            .then(async () => await confirm.edit({ embeds: [embed] }))
-            .then(async () => {
-                if (banchoclient.isDisconnected()) await banchoclient.connect();
-                const channel = await banchoclient.createLobby(
-                    `Sawada Scrim #${match.matchcode}`
-                );
-                embed.setColor("#51E8FE");
-                embed.setURL(
-                    `https://osu.ppy.sh/community/matches/${channel.lobby.id}`
-                );
-                embed.setFooter("Match lobby has been created");
-                return channel;
-            })
-            .catch(async (err) => {
-                embed.setFooter(`❌ ${err}`);
-                reject(err);
-                throw err;
-            })
-            .finally(async () => {
-                await confirm.edit({ embeds: [embed] });
-            });
-
-        await confirm.edit({ embeds: [embed] });
-        const devembed = new MessageEmbed()
-            .setTitle("This project is still very early in development")
-            .setColor("#51E8FE")
-            .setURL("https://github.com/Monko2k/SawadaBot")
-            .setDescription(
-                "Send feature requests and bug reports to Monko2k#3672 on discord"
-            )
-            .setFooter(
-                "Want this bot for your own server? DM me for an invite"
+        .setFooter("Confirm match settings to start the lobby");
+    const confirm = await match.initmsg.channel.send({ embeds: [embed] });
+    await confirm.react("✅");
+    await confirm.react("❌");
+    const gamechannel = await awaitConfirmReact(confirm, match.initmsg.author)
+        .then((res) => {
+            //await confirm.reactions.removeAll(); need perms
+            if (res !== "✅") {
+                embed.setColor("#FF0000");
+                throw "Match Cancelled";
+            } else {
+                embed.setColor("#72F795");
+                embed.setFooter("Match confirmed, creating lobby...");
+            }
+        })
+        .then(() => confirm.edit({ embeds: [embed] }))
+        .then(() => {
+            if (banchoclient.isDisconnected()) {
+                return banchoclient.connect();
+            }
+        })
+        .then(() => {
+            return banchoclient.createLobby(`Sawada Scrim #${match.matchcode}`);
+        })
+        .then((res) => {
+            embed.setColor("#51E8FE");
+            embed.setURL(
+                `https://osu.ppy.sh/community/matches/${res.lobby.id}`
             );
-        await match.initmsg.channel.send({ embeds: [devembed] });
-        const game = new Game(match, gamechannel, lobbies);
-        game.startGame();
-        resolve(game);
-    });
+            embed.setFooter("Match lobby has been created");
+            return res;
+        })
+        .catch((err) => {
+            embed.setFooter(`❌ ${err}`);
+            return Promise.reject(err);
+        })
+        .finally(() => confirm.edit({ embeds: [embed] }));
+
+    await confirm.edit({ embeds: [embed] });
+    const devembed = new MessageEmbed()
+        .setTitle("This project is still very early in development")
+        .setColor("#51E8FE")
+        .setURL("https://github.com/Monko2k/SawadaBot")
+        .setDescription(
+            "Send feature requests and bug reports to Monko2k#3672 on discord"
+        )
+        .setFooter("Want this bot for your own server? DM me for an invite");
+    await match.initmsg.channel.send({ embeds: [devembed] });
+    const game = new Game(match, gamechannel, lobbies);
+    game.startGame();
+    return Promise.resolve(game);
 }
 
 initDiscord();
