@@ -101,18 +101,15 @@ export class Game {
         });
 
         lobby.on("matchStarted", () => {
-            console.log("STARTED");
             clearTimeout(this.timeout);
         });
 
         lobby.on("playing", () => {
-            console.log("PLAYING");
             //do it again just in case
             clearTimeout(this.timeout);
         });
 
         lobby.on("matchFinished", async () => {
-            console.log("FINISHED");
             this.timeout = setTimeout(() => {
                 this.timeoutLobby();
             }, 300000);
@@ -257,13 +254,11 @@ export class Game {
         await lobby.setMap(map, Mode.osu);
         await lobby.setMods(mods!, freemod);
         modgroup.maps.splice(mapindex, 1);
-        console.log(this.match.mappool.modgroups[modgroupindex]);
         this.pickindex++;
     }
 
     private resetTimeout() {
         if (this.timeout !== null) {
-            console.log("RESET");
             clearTimeout(this.timeout);
             this.timeout = setTimeout(() => {
                 this.timeoutLobby();
