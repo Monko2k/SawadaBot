@@ -100,7 +100,7 @@ async function handleMessage(m: Message) {
                 let poolid = await awaitResponse(m);
                 const re = /[^//]+$/;
                 if (re.test(poolid)) {
-                    const mappool = await getPool(poolid.match(re)![0]);
+                    const mappool = await getPool(poolid.match(re)![0], bestOf);
                     if (mappool) {
                         return mappool;
                     } else {
@@ -163,14 +163,22 @@ async function awaitConfirmReact(m: Message, u: DiscordUser): Promise<string> {
     });
 }
 
-async function getPool(pool: string): Promise<Mappool> {
+async function getPool(pool: string, bestof: number): Promise<Mappool> {
     // TODO: put the pools in a nosql db and query, instead of this shit
     return new Promise<Mappool>(async (resolve, reject) => {
         try {
             const data = (await import(
                 "../pools/" + pool + ".json"
             )) as Mappool;
-            resolve(data);
+            let mapcount = 0;
+            for (let i = 0; i < data.modgroups.length - 1; i++) {
+                mapcount += data.modgroups[i].maps.length;
+            }
+            if (mapcount < bestof) {
+                reject("Invalid pool (mappool is too small for this bestOf");
+            } else {
+                resolve(data);
+            }
         } catch (err) {
             reject("Invalid Pool");
         }
