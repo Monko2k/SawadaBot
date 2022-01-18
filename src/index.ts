@@ -227,7 +227,7 @@ async function initGame(match: MatchInfo): Promise<Game> {
                 value: match.bluePlayers.map((e) => e.username).join(", "),
             }
         )
-        .setFooter("Confirm match settings to start the lobby");
+        .setFooter({ text: "Confirm match settings to start the lobby" });
     const confirm = await match.initmsg.channel.send({ embeds: [embed] });
     await confirm.react("✅");
     await confirm.react("❌");
@@ -239,7 +239,7 @@ async function initGame(match: MatchInfo): Promise<Game> {
                 throw "Match Cancelled";
             } else {
                 embed.setColor("#72F795");
-                embed.setFooter("Match confirmed, creating lobby...");
+                embed.setFooter({ text: "Match confirmed, creating lobby..." });
             }
         })
         .then(() => confirm.edit({ embeds: [embed] }))
@@ -256,7 +256,7 @@ async function initGame(match: MatchInfo): Promise<Game> {
             embed.setURL(
                 `https://osu.ppy.sh/community/matches/${res.lobby.id}`
             );
-            embed.setFooter("Match lobby has been created");
+            embed.setFooter({ text: "Match lobby has been created" });
             return res;
         })
         .catch((err) => {
@@ -273,7 +273,9 @@ async function initGame(match: MatchInfo): Promise<Game> {
         .setDescription(
             "Send feature requests and bug reports to Monko2k#3672 on discord"
         )
-        .setFooter("Want this bot for your own server? DM me for an invite");
+        .setFooter({
+            text: "Want this bot for your own server? DM me for an invite",
+        });
     await match.initmsg.channel.send({ embeds: [devembed] });
     const game = new Game(match, gamechannel, lobbies);
     game.startGame();
