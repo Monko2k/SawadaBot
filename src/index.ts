@@ -58,15 +58,17 @@ async function handleMessage(m: Message) {
         // TODO: move each setup step to its own function so that we can
         // use choose which setup steps to use in alternate gamemodes
         m.reply("Enter team size (1-8)")
-            .then(async () => {
-                teamSize = Number(await awaitResponse(m));
+            .then(() => awaitResponse(m))
+            .then((res) => {
+                teamSize = Number(res);
                 if (Number.isNaN(teamSize) || teamSize < 1 || teamSize > 8) {
                     throw "Invalid team size";
                 }
-            })
-            .then(async () => {
                 m.reply("Enter BestOf (1-13)");
-                bestOf = Number(await awaitResponse(m));
+            })
+            .then(() => awaitResponse(m))
+            .then((res) => {
+                bestOf = Number(res);
                 if (
                     bestOf < 1 ||
                     bestOf > 13 ||
@@ -75,42 +77,46 @@ async function handleMessage(m: Message) {
                 ) {
                     throw "Invalid bestOf";
                 }
-            })
-            .then(async () => {
                 m.reply("Enter Team 1 members (comma separated)");
-                let redNames = (await awaitResponse(m)).split(",");
+            })
+            .then(() => awaitResponse(m))
+            .then((res) => {
+                let redNames = res.split(",");
                 if (redNames.length !== teamSize) {
                     throw "Invalid number of members";
                 }
-                redNames = redNames.map((e) => e.trim());
-                red = await validateMembers(redNames, all);
+                return redNames.map((e) => e.trim());
             })
-            .then(async () => {
+            .then((res) => validateMembers(res, all))
+            .then((res) => {
+                red = res;
                 m.reply("Enter Team 2 members (comma separated)");
-                let blueNames = (await awaitResponse(m)).split(",");
+            })
+            .then(() => awaitResponse(m))
+            .then((res) => {
+                let blueNames = res.split(",");
                 if (blueNames.length !== teamSize) {
                     throw "Invalid number of members";
                 }
-                blueNames = blueNames.map((e) => e.trim());
-                blue = await validateMembers(blueNames, all);
+                return blueNames.map((e) => e.trim());
             })
-            .then(async () => {
+            .then((res) => validateMembers(res, all))
+            .then((res) => {
+                blue = res;
                 m.reply(
                     "Enter Mappool (https://oma.hwc.hr/pools, 2800+ elo pools)"
                 );
-                let poolid = await awaitResponse(m);
+            })
+            .then(() => awaitResponse(m))
+            .then((res) => {
                 const re = /[^//]+$/;
-                if (re.test(poolid)) {
-                    const mappool = await getPool(poolid.match(re)![0], bestOf);
-                    if (mappool) {
-                        return mappool;
-                    } else {
-                        throw "Invalid mappool";
-                    }
+                if (re.test(res)) {
+                    return res.match(re)![0];
                 } else {
                     throw "Invalid mappool URL format";
                 }
             })
+            .then((res) => getPool(res, bestOf))
             .then((res) => {
                 const match: MatchInfo = {
                     matchcode: crypto
