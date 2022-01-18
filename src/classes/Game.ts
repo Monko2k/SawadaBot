@@ -143,7 +143,10 @@ export class Game {
                 this.pointsBlue++;
             }
             this.sendScore();
-            if (this.pointsRed === winpoints) {
+            if (this.pointsRed === winpoints && this.pointsBlue === winpoints) {
+                channel.sendMessage("The match ends in a tie");
+                this.endMatch();
+            } else if (this.pointsRed === winpoints) {
                 channel.sendMessage("Red wins the match");
                 this.endMatch();
             } else if (this.pointsBlue === winpoints) {
@@ -155,7 +158,6 @@ export class Game {
                 );
                 await this.setTieBreaker();
             } else {
-                this.pickindex++;
                 await this.setRandomBeatmap();
             }
         });
@@ -240,7 +242,11 @@ export class Game {
                 freemod = true;
                 break;
         }
-        this.channel.sendMessage(`Next Map: ${modgroup.mod}${mapindex + 1}`);
+        this.channel.sendMessage(
+            `Next Map: ${modgroup.mod}${mapindex + 1} (pick ${
+                this.pickindex + 1
+            })`
+        );
         if (freemod) {
             this.channel.sendMessage(
                 "Allowed Mods: HD, HR, EZ, FL, NF, NM (0.7x multiplier)"
