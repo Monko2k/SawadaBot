@@ -271,7 +271,8 @@ async function initGame(match: MatchInfo): Promise<Game> {
         .setColor("#51E8FE")
         .setURL("https://github.com/Monko2k/SawadaBot")
         .setDescription(
-            "Send feature requests and bug reports to Monko2k#3672 on discord"
+            "Send feature requests and bug reports to Monko2k#3672 on discord\n" +
+                "If the bot gets stuck, use !override <beatmapid> to force a new map (temporary)"
         )
         .setFooter({
             text: "Want this bot for your own server? DM me for an invite",
