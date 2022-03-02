@@ -272,10 +272,11 @@ async function initGame(match: MatchInfo): Promise<Game> {
         .setURL("https://github.com/Monko2k/SawadaBot")
         .setDescription(
             "Send feature requests and bug reports to Monko2k#3672 on discord\n" +
-                "If the bot gets stuck, use !override <beatmapid> to force a new map (temporary)"
+                "If the bot gets stuck, use !override <beatmapid> to force a new map (temporary)\n" +
+                "Want more pools? Send them to Monko2k and he will add them when he can be assed"
         )
         .setFooter({
-            text: "Want this bot for your own server? DM me for an invite",
+            text: "Want this bot for your own server? DM Monko2k for an invite",
         });
     await match.initmsg.channel.send({ embeds: [devembed] });
     const game = new Game(match, gamechannel, lobbies);
