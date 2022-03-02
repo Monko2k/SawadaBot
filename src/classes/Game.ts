@@ -86,6 +86,7 @@ export class Game {
                 const args = msg.content.split(" ");
                 if (args.length > 1) {
                     await lobby.setMap(Number(args[1]), Mode.osu);
+                    await lobby.setMods([BanchoMods.None], true);
                 }
             }
         });
