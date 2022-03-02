@@ -77,10 +77,6 @@ export class Game {
     }
 
     private eventHandle() {
-        const tie =
-            this.match.bestOf > 1 &&
-            this.pointsRed === this.pointsBlue &&
-            this.pointsBlue === Math.floor(this.match.bestOf / 2);
         const winpoints = Math.ceil(this.match.bestOf / 2);
         const channel = this.channel!;
         const lobby = channel.lobby;
@@ -152,7 +148,11 @@ export class Game {
             } else if (this.pointsBlue === winpoints) {
                 channel.sendMessage("Blue wins the match");
                 this.endMatch();
-            } else if (tie) {
+            } else if (
+                this.match.bestOf > 1 &&
+                this.pointsRed === this.pointsBlue &&
+                this.pointsBlue === Math.floor(this.match.bestOf / 2)
+            ) {
                 channel.sendMessage(
                     "Scores are tied. A tiebreaker will be played"
                 );
