@@ -3,7 +3,7 @@ Self-Hostable Maid Bot clone
 
 For now, DM on discord for access/invite, feature requests, or problems
 
-Wanna help dev? Come help dev
+Some scripts to help you convert mappools for use with this bot can be found [here](https://github.com/Monko2k/MappoolConversionScripts)
 
 ## Planned Features
 - quick match gamemode 
